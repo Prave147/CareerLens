@@ -16,6 +16,7 @@ const portfolioConnector = require('../services/connectors/portfolioConnector');
 const evidenceEngine = require('../services/evidence/evidenceEngine');
 const scoringEngine = require('../services/scoring/scoringEngine');
 const aiService = require('../services/ai/aiService');
+const resumeService = require('../services/resume/resumeService');
 
 // Get current student profile
 const getProfile = async (req, res, next) => {
@@ -195,45 +196,30 @@ const updateLinks = async (req, res, next) => {
 const uploadResume = async (req, res, next) => {
   try {
     const file = req.file;
-    const fileName = file ? file.originalname : (req.body.fileName || 'Student_Resume.pdf');
     const userId = req.user?.id || req.user?._id;
 
-    // AI Resume Extraction
+    if (file && file.buffer) {
+      const fileInfo = {
+        originalFileName: file.originalname,
+        fileType: file.mimetype || 'application/pdf',
+        fileSize: file.size,
+      };
+      const result = await resumeService.processResumeUpload(userId, file.buffer, fileInfo);
+      return res.status(200).json(result);
+    }
+
+    const fileName = req.body.fileName || 'Student_Resume.pdf';
+
+    // Fallback Mock extraction if no binary file was attached
     const extractionResult = await aiService.extractResumeSkills(fileName);
 
     const resumeData = {
       fileName,
-      fileSize: file ? `${(file.size / 1024).toFixed(1)} KB` : '482 KB',
+      fileSize: '482 KB',
       uploadedAt: new Date(),
       extractedSkills: extractionResult.extractedSkills || ['React', 'Node.js', 'MongoDB', 'Docker', 'AWS', 'DSA'],
       status: 'ANALYZED',
     };
-
-    // Save extracted skills into SkillClaim documents
-    try {
-      const studentProfile = await StudentProfile.findOne({ user: userId });
-      if (studentProfile) {
-        studentProfile.resume = resumeData;
-        await studentProfile.save();
-
-        // Create or update SkillClaim records
-        for (const skill of resumeData.extractedSkills) {
-          await SkillClaim.findOneAndUpdate(
-            { studentId: userId, skill },
-            {
-              studentProfile: studentProfile._id,
-              studentId: userId,
-              collegeId: studentProfile.collegeId,
-              skill,
-              source: 'RESUME',
-              claimStrength: 'SELF_DECLARED',
-              verificationStatus: 'PENDING'
-            },
-            { upsert: true }
-          );
-        }
-      }
-    } catch (dbErr) {}
 
     res.json({
       success: true,

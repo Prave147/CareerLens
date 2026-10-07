@@ -14,9 +14,13 @@ export const studentService = {
   },
 
   async uploadResume(formData) {
-    return await api.post('/student/resume', formData, {
+    return await api.post('/resume/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+  },
+
+  async getLatestResumeAnalysis() {
+    return await api.get('/resume/latest');
   },
 
   async submitEvidence(evidencePayload) {
@@ -69,5 +73,21 @@ export const studentService = {
 
   async chatAdvisor(messages) {
     return await api.post('/student/advisor/chat', { messages });
+  },
+
+  async connectGithub(input) {
+    return await api.post('/github/connect', { username: input, profileUrl: input });
+  },
+
+  async getGithubProfile() {
+    return await api.get('/github/profile');
+  },
+
+  async analyzeGithub(forceRefresh = false) {
+    return await api.post('/github/analyze', { forceRefresh });
+  },
+
+  async getGithubAnalysis() {
+    return await api.get('/github/analysis');
   },
 };

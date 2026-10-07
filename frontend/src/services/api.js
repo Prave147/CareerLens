@@ -5,7 +5,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 60000,
 });
 
 // Request Interceptor: Attach JWT Token
@@ -36,7 +36,12 @@ api.interceptors.response.use(
       }
       return Promise.reject(error.response.data || { message: error.message });
     }
-    return Promise.reject({ message: 'Network error or server unavailable. Please try again.' });
+
+    if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+      return Promise.reject({ message: 'Request timed out. The operation may still be processing in the background.' });
+    }
+
+    return Promise.reject({ message: error.message || 'Network error or server unavailable. Please try again.' });
   }
 );
 

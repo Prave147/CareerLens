@@ -19,6 +19,7 @@ import { PlacementSignup } from './pages/auth/PlacementSignup';
 import { Dashboard as StudentDashboard } from './pages/student/Dashboard';
 import { Profile as StudentProfile } from './pages/student/Profile';
 import { Resume as StudentResume } from './pages/student/Resume';
+import { GitHubIntelligence as StudentGitHub } from './pages/student/GitHubIntelligence';
 import { Evidence as StudentEvidence } from './pages/student/Evidence';
 import { Skills as StudentSkills } from './pages/student/Skills';
 import { Projects as StudentProjects } from './pages/student/Projects';
@@ -96,6 +97,7 @@ export function App() {
             <Route path="/dashboard" element={<StudentDashboard />} />
             <Route path="/profile" element={<StudentProfile />} />
             <Route path="/resume" element={<StudentResume />} />
+            <Route path="/github" element={<StudentGitHub />} />
             <Route path="/evidence" element={<StudentEvidence />} />
             <Route path="/skills" element={<StudentSkills />} />
             <Route path="/projects" element={<StudentProjects />} />

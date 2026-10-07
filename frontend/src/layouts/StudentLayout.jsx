@@ -10,6 +10,7 @@ import {
   Target,
   Milestone,
   FolderGit2,
+  GitFork,
   Code2,
   Compass,
   BookOpen,
@@ -49,9 +50,10 @@ export const StudentLayout = () => {
     {
       label: 'EVIDENCE & INTELLIGENCE',
       items: [
+        { name: 'GitHub Intelligence', path: '/github', icon: FolderGit2 },
         { name: 'Evidence Matrix', path: '/evidence', icon: Layers },
         { name: 'Skill Gaps', path: '/skills', icon: Sparkles },
-        { name: 'Projects & Ownership', path: '/projects', icon: FolderGit2 },
+        { name: 'Projects & Ownership', path: '/projects', icon: GitFork },
         { name: 'Coding Activity', path: '/coding-activity', icon: Code2 },
         { name: 'Resume Claims', path: '/resume', icon: FileText },
       ]
