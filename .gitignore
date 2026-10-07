@@ -1,0 +1,114 @@
+# =========================================
+# CareerLens Git Ignore
+# =========================================
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+!.env.example.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
+# npm / yarn / pnpm logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+
+# Vite
+.vite/
+**/.vite/
+
+# Coverage
+coverage/
+**/coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+**/logs/
+
+# Runtime temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+**/tmp/
+**/temp/
+
+# Uploaded/generated runtime files
+backend/uploads/
+backend/temp/
+backend/logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+
+# IDE/editor files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Local environment/config files
+*.local
+
+# Cache files
+.cache/
+**/.cache/
+.parcel-cache/
+.eslintcache
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Python/cache files if any auxiliary scripts exist
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Database/local development files
+*.sqlite
+*.sqlite3
+*.db
+
+# Certificates/private keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Generated reports/files
+reports/
+generated/
+output/
+
+# =========================================
+# End CareerLens Git Ignore
+# =========================================
