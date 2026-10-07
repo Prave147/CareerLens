@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { studentService } from '../../services/studentService';
 import {
   FileText,
@@ -21,8 +22,15 @@ import {
   Database,
   Globe,
   HelpCircle,
-  FileCheck2
+  FileCheck2,
+  ChevronRight,
+  GitBranch,
+  ArrowUpRight
 } from 'lucide-react';
+
+import { useSkillEvidence } from '../../hooks/useSkillEvidence';
+import { SkillEvidenceModal } from '../../components/SkillEvidenceModal';
+import { findFusedSkill, isSkillMatch } from '../../utils/skillUtils';
 
 const ANALYSIS_STAGES = [
   'Reading resume',
@@ -43,7 +51,10 @@ export const Resume = () => {
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('overview'); // overview, skills, projects, experience, claims
+  const [activeTab, setActiveTab] = useState('skills'); // Default to skills to immediately view claims & evidence
+  const [selectedSkillModal, setSelectedSkillModal] = useState(null);
+  const [skillFilter, setSkillFilter] = useState('ALL'); // ALL, VERIFIED, UNVERIFIED
+  const { skills: fusedSkills, summary: evidenceSummary, refresh: refreshEvidence } = useSkillEvidence();
 
   useEffect(() => {
     loadLatestAnalysis();
@@ -293,49 +304,115 @@ export const Resume = () => {
       {/* Extracted Intelligence Display */}
       {analysis && (
         <div className="space-y-6 pt-4">
-          {/* Metadata Bar */}
-          <div className="p-4 bg-white rounded-2xl border border-surface-border shadow-card flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                <FileText className="w-5 h-5" />
+          {/* Evidence Fusion Verification Summary Banner */}
+          <div className="p-5 bg-white rounded-2xl border border-surface-border shadow-card space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-50 text-primary border border-brand-200 flex items-center justify-center">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-content-primary">{analysis.originalFileName}</p>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded">
+                      PDF Extracted
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-content-secondary mt-0.5">
+                    Analyzed via {analysis.extractionMetadata?.model || 'Gemini'} • Global evidence fusion active
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-content-primary">{analysis.originalFileName}</p>
-                <p className="text-[11px] text-content-secondary">
-                  Processed on {new Date(analysis.createdAt || Date.now()).toLocaleDateString()} via {analysis.extractionMetadata?.model || 'Gemini 3.8 Flash'} ({analysis.extractionMetadata?.processingTimeMs || 0} ms)
-                </p>
+
+              {/* Source badges */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold flex items-center gap-1 text-[11px]">
+                  <FileText className="w-3.5 h-3.5" />
+                  Resume Analyzed
+                </span>
+                {evidenceSummary?.sourcesConnected?.github ? (
+                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold flex items-center gap-1 text-[11px]">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    GitHub Connected (@{evidenceSummary.githubUsername})
+                  </span>
+                ) : (
+                  <Link
+                    to="/github"
+                    className="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 rounded-lg font-bold flex items-center gap-1 text-[11px] transition-colors"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                    Connect GitHub for Proof
+                  </Link>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs">
-              <div className="px-3 py-1 bg-slate-100 rounded-lg text-slate-700 font-bold">
-                {analysis.skills?.length || 0} Skills Claimed
+            {/* Verification Breakdown Counters */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-surface-border">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                <span className="text-[10px] font-bold text-content-secondary uppercase block">Resume Claims</span>
+                <span className="text-lg font-black text-content-primary">{analysis.skills?.length || 0}</span>
               </div>
-              <div className="px-3 py-1 bg-slate-100 rounded-lg text-slate-700 font-bold">
-                {analysis.projects?.length || 0} Projects
+              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200/80">
+                <span className="text-[10px] font-bold text-emerald-700 uppercase block">Verified by Proof</span>
+                <span className="text-lg font-black text-emerald-800">
+                  {analysis.skills?.filter((s) => {
+                    const f = findFusedSkill(fusedSkills, s.name);
+                    return f?.status === 'VERIFIED' || f?.status === 'STRONGLY_VERIFIED';
+                  }).length || 0}
+                </span>
               </div>
-              <div className="px-3 py-1 bg-brand-50 border border-brand-200 rounded-lg text-primary font-bold flex items-center gap-1.5">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>Claims Unverified</span>
+              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/80">
+                <span className="text-[10px] font-bold text-amber-700 uppercase block">Partially Verified</span>
+                <span className="text-lg font-black text-amber-800">
+                  {analysis.skills?.filter((s) => {
+                    const f = findFusedSkill(fusedSkills, s.name);
+                    return f?.status === 'PARTIALLY_VERIFIED';
+                  }).length || 0}
+                </span>
+              </div>
+              <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-200/80">
+                <span className="text-[10px] font-bold text-rose-700 uppercase block">Awaiting Proof</span>
+                <span className="text-lg font-black text-rose-800">
+                  {analysis.skills?.filter((s) => {
+                    const f = findFusedSkill(fusedSkills, s.name);
+                    return !f || f.status === 'UNVERIFIED' || f.status === 'NOT_FOUND';
+                  }).length || 0}
+                </span>
+              </div>
+              <div className="p-3 bg-primary/5 rounded-xl border border-primary/20 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-bold text-primary uppercase block">Evidence Coverage</span>
+                <span className="text-lg font-black text-primary">
+                  {analysis.skills?.length > 0
+                    ? `${Math.round(
+                        ((analysis.skills?.filter((s) => {
+                          const f = findFusedSkill(fusedSkills, s.name);
+                          return f?.status === 'VERIFIED' || f?.status === 'STRONGLY_VERIFIED';
+                        }).length || 0) /
+                          analysis.skills.length) *
+                          100
+                      )}%`
+                    : '0%'}
+                </span>
               </div>
             </div>
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-surface-border gap-2 text-xs font-bold">
+          <div className="flex border-b border-surface-border gap-2 text-xs font-bold overflow-x-auto">
             {[
-              { id: 'overview', label: 'Candidate Overview', icon: GraduationCap },
-              { id: 'skills', label: `Skills (${analysis.skills?.length || 0})`, icon: Code2 },
+              { id: 'skills', label: `Skill Claims & Evidence (${analysis.skills?.length || 0})`, icon: Code2 },
+              { id: 'claims', label: `Claims Matrix (${analysis.claims?.length || 0})`, icon: Layers },
               { id: 'projects', label: `Projects (${analysis.projects?.length || 0})`, icon: FolderGit2 },
               { id: 'experience', label: `Experience (${(analysis.experience?.length || 0) + (analysis.internships?.length || 0)})`, icon: Briefcase },
-              { id: 'claims', label: `Claims Matrix (${analysis.claims?.length || 0})`, icon: Layers },
+              { id: 'overview', label: 'Candidate Overview', icon: GraduationCap },
             ].map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`pb-3 px-3.5 flex items-center gap-2 border-b-2 transition-colors ${
+                  className={`pb-3 px-3.5 flex items-center gap-2 border-b-2 whitespace-nowrap transition-colors ${
                     activeTab === tab.id
                       ? 'border-primary text-primary'
                       : 'border-transparent text-content-secondary hover:text-content-primary'
@@ -348,177 +425,201 @@ export const Resume = () => {
             })}
           </div>
 
-          {/* TAB 1: OVERVIEW */}
-          {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Identity & Contact */}
-              <div className="bg-white p-6 rounded-2xl border border-surface-border shadow-card space-y-4">
-                <h3 className="text-sm font-extrabold text-content-primary flex items-center gap-2">
-                  <GraduationCap className="w-4 h-4 text-primary" />
-                  Candidate Identity
-                </h3>
-                <div className="space-y-2 text-xs">
-                  <div>
-                    <span className="text-content-muted block text-[11px]">Full Name</span>
-                    <span className="font-bold text-content-primary">{analysis.candidate?.name || 'Not specified'}</span>
-                  </div>
-                  <div>
-                    <span className="text-content-muted block text-[11px]">Email</span>
-                    <span className="font-medium text-content-primary">{analysis.candidate?.email || 'Not specified'}</span>
-                  </div>
-                  <div>
-                    <span className="text-content-muted block text-[11px]">Phone</span>
-                    <span className="font-medium text-content-primary">{analysis.candidate?.phone || 'Not specified'}</span>
-                  </div>
-                  <div>
-                    <span className="text-content-muted block text-[11px]">Location</span>
-                    <span className="font-medium text-content-primary">{analysis.candidate?.location || 'Not specified'}</span>
-                  </div>
-                </div>
-
-                {analysis.codingProfiles && analysis.codingProfiles.length > 0 && (
-                  <div className="pt-3 border-t border-surface-border">
-                    <span className="text-[11px] font-bold text-content-secondary block mb-2">Profiles Detected</span>
-                    <div className="flex flex-wrap gap-2">
-                      {analysis.codingProfiles.map((cp, idx) => (
-                        <div key={idx} className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] flex items-center gap-1.5">
-                          <Globe className="w-3 h-3 text-slate-500" />
-                          <span className="font-bold text-content-primary">{cp.platform}:</span>
-                          <span className="text-content-secondary">{cp.username || cp.url || 'Found'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Education & Summary */}
-              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-surface-border shadow-card space-y-5">
-                {analysis.summary && (
-                  <div>
-                    <h4 className="text-xs font-bold text-content-secondary uppercase tracking-wider mb-1.5">
-                      Professional Summary
-                    </h4>
-                    <p className="text-xs text-content-primary leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                      {analysis.summary}
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <h4 className="text-xs font-bold text-content-secondary uppercase tracking-wider mb-2">
-                    Education Extracted
-                  </h4>
-                  {analysis.education && analysis.education.length > 0 ? (
-                    <div className="space-y-3">
-                      {analysis.education.map((edu, idx) => (
-                        <div key={idx} className="p-3.5 border border-surface-border rounded-xl bg-white flex items-start justify-between">
-                          <div>
-                            <p className="text-xs font-bold text-content-primary">{edu.degree || 'Degree'}</p>
-                            <p className="text-xs text-content-secondary">{edu.institution}</p>
-                            {edu.field && <p className="text-[11px] text-content-muted">Major: {edu.field}</p>}
-                          </div>
-                          <div className="text-right text-xs">
-                            <span className="text-[11px] text-content-muted block">
-                              {edu.startYear ? `${edu.startYear} - ${edu.endYear || 'Present'}` : ''}
-                            </span>
-                            {edu.cgpa && (
-                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded text-[11px]">
-                                CGPA: {edu.cgpa}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-content-muted">No explicit education details found.</p>
-                  )}
-                </div>
-
-                {/* Certifications & Achievements */}
-                {((analysis.certifications && analysis.certifications.length > 0) || (analysis.achievements && analysis.achievements.length > 0)) && (
-                  <div className="pt-4 border-t border-surface-border grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-xs font-bold text-content-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Award className="w-3.5 h-3.5 text-primary" />
-                        Certifications ({analysis.certifications?.length || 0})
-                      </h4>
-                      <div className="space-y-2">
-                        {analysis.certifications?.map((c, i) => (
-                          <div key={i} className="p-2.5 bg-slate-50 rounded-lg text-xs">
-                            <p className="font-bold text-content-primary">{c.name}</p>
-                            <p className="text-[11px] text-content-muted">{c.issuer || 'Issuer'} • {c.date || 'Recent'}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="text-xs font-bold text-content-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        Achievements ({analysis.achievements?.length || 0})
-                      </h4>
-                      <div className="space-y-2">
-                        {analysis.achievements?.map((a, i) => (
-                          <div key={i} className="p-2.5 bg-slate-50 rounded-lg text-xs">
-                            <p className="font-bold text-content-primary">{a.title}</p>
-                            <p className="text-[11px] text-content-secondary">{a.description}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: SKILLS DETECTED */}
+          {/* TAB 1: SKILLS CLAIMED & EVIDENCE BREAKDOWN */}
           {activeTab === 'skills' && (
             <div className="bg-white p-6 rounded-2xl border border-surface-border shadow-card space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-extrabold text-content-primary">Technical Skills Claimed on Resume</h3>
+                  <h3 className="text-sm font-extrabold text-content-primary">Resume Skill Claims vs External Evidence</h3>
                   <p className="text-xs text-content-secondary mt-0.5">
-                    Categorized and tagged with resume source quotes. All skills are marked as <strong>UNVERIFIED</strong> claims.
+                    Every resume claim is cross-referenced with your connected GitHub repositories.
                   </p>
                 </div>
-                <span className="px-3 py-1 bg-brand-50 text-primary border border-brand-200 text-xs font-extrabold rounded-xl">
-                  {analysis.skills?.length || 0} Total Skills
-                </span>
+                
+                {/* Filter tabs */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setSkillFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      skillFilter === 'ALL' ? 'bg-white text-content-primary shadow-sm' : 'text-content-secondary hover:text-content-primary'
+                    }`}
+                  >
+                    All ({analysis.skills?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSkillFilter('VERIFIED')}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      skillFilter === 'VERIFIED' ? 'bg-emerald-600 text-white shadow-sm' : 'text-content-secondary hover:text-content-primary'
+                    }`}
+                  >
+                    Verified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSkillFilter('UNVERIFIED')}
+                    className={`px-3 py-1 rounded-lg transition-all ${
+                      skillFilter === 'UNVERIFIED' ? 'bg-rose-600 text-white shadow-sm' : 'text-content-secondary hover:text-content-primary'
+                    }`}
+                  >
+                    Unverified
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {analysis.skills?.map((skill, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl border border-surface-border bg-slate-50/50 hover:bg-white hover:border-primary/40 transition-all space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-xs font-bold text-content-primary">{skill.name}</span>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(skill.category)}`}>
-                        {skill.category}
-                      </span>
-                    </div>
+              {/* Skills Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {analysis.skills
+                  ?.filter((skill) => {
+                    const fused = findFusedSkill(fusedSkills, skill.name);
+                    const isVerified = fused?.status === 'VERIFIED' || fused?.status === 'STRONGLY_VERIFIED';
+                    if (skillFilter === 'VERIFIED') return isVerified;
+                    if (skillFilter === 'UNVERIFIED') return !isVerified;
+                    return true;
+                  })
+                  .map((skill, idx) => {
+                    const fused = findFusedSkill(fusedSkills, skill.name);
+                    const isVerified = fused?.status === 'VERIFIED' || fused?.status === 'STRONGLY_VERIFIED';
+                    const isPartial = fused?.status === 'PARTIALLY_VERIFIED';
+                    const hasGithub = fused?.repositories?.length > 0 || fused?.sources?.includes('GITHUB');
+                    const hasLeetCode = fused?.isLeetCodeVerified || fused?.sources?.includes('LEETCODE');
+                    const repoCount = fused?.repositories?.length || 0;
 
-                    <div className="flex items-center justify-between text-[11px] text-content-muted pt-1">
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                        Status: <strong className="text-amber-700">Claimed</strong>
-                      </span>
-                      <span className="text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200">
-                        Conf: {skill.confidence}
-                      </span>
-                    </div>
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-4 rounded-xl border transition-all space-y-3 flex flex-col justify-between ${
+                          isVerified
+                            ? 'border-emerald-200 bg-emerald-50/20 hover:border-emerald-400 shadow-subtle'
+                            : isPartial
+                            ? 'border-amber-200 bg-amber-50/20 hover:border-amber-400'
+                            : 'border-slate-200 bg-slate-50/40 hover:bg-white hover:border-primary/40'
+                        }`}
+                      >
+                        <div className="space-y-2.5">
+                          {/* Top: Skill & Category */}
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-sm font-black text-content-primary tracking-tight">{skill.name}</span>
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${getCategoryBadgeClass(skill.category)}`}>
+                              {skill.category}
+                            </span>
+                          </div>
 
-                    {skill.evidenceText && (
-                      <p className="text-[10px] text-content-secondary bg-white p-2 rounded border border-slate-200 line-clamp-2 italic">
-                        "{skill.evidenceText}"
-                      </p>
-                    )}
-                  </div>
-                ))}
+                          {/* Row 1: Resume Claim */}
+                          <div className="p-2 bg-white/90 rounded-lg border border-slate-200/80 space-y-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-content-secondary font-bold">Resume Claim:</span>
+                              <span className="font-extrabold text-blue-700 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                                Claimed
+                              </span>
+                            </div>
+                            {skill.evidenceText && (
+                              <p className="text-[10px] text-content-muted italic line-clamp-2">
+                                "{skill.evidenceText}"
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Row 2: External Evidence */}
+                          <div className="p-2 bg-white/90 rounded-lg border border-slate-200/80 space-y-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-content-secondary font-bold">External Evidence:</span>
+                              {isVerified || isPartial ? (
+                                <span className="font-extrabold text-emerald-700 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  {hasGithub && hasLeetCode
+                                    ? `GitHub + LeetCode`
+                                    : hasLeetCode
+                                    ? `LeetCode (${fused?.evidenceCount || 'DSA'} solved)`
+                                    : `GitHub (${repoCount} ${repoCount === 1 ? 'repo' : 'repos'})`}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-slate-500 text-[10px]">
+                                  Awaiting external proof
+                                </span>
+                              )}
+                            </div>
+                            {isVerified && hasGithub && fused?.repositories?.[0] && (
+                              <p className="text-[10px] text-content-secondary truncate">
+                                Repo: <span className="font-mono font-bold text-slate-700">{fused.repositories[0].name}</span>
+                              </p>
+                            )}
+                            {isVerified && hasLeetCode && !hasGithub && (
+                              <p className="text-[10px] text-emerald-700 truncate">
+                                Verified algorithmic problem solving metrics
+                              </p>
+                            )}
+                            {!isVerified && !isPartial && (
+                              <p className="text-[10px] text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-200/60 leading-tight mt-1">
+                                CareerLens could not verify this claim from currently connected evidence. This does not mean you do not know {skill.name}.
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Verification State & Confidence */}
+                          <div className="flex items-center justify-between pt-1 text-[11px]">
+                            <div>
+                              {isVerified ? (
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-extrabold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  VERIFIED
+                                </span>
+                              ) : isPartial ? (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-[10px] font-extrabold flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3 text-amber-600" />
+                                  PARTIALLY VERIFIED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-bold flex items-center gap-1">
+                                  <HelpCircle className="w-3 h-3 text-slate-400" />
+                                  UNVERIFIED
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-bold text-content-muted">
+                              Confidence: <span className={isVerified ? 'text-emerald-700 font-extrabold' : 'text-slate-600'}>{fused?.confidence || skill.confidence || 'LOW'}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Card Action */}
+                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                          <span className="text-content-muted text-[10px]">
+                            {isVerified
+                              ? hasLeetCode && hasGithub
+                                ? `${repoCount} Repo(s) + LeetCode`
+                                : hasLeetCode
+                                ? `LeetCode Verified`
+                                : `${repoCount} Code Evidence Item(s)`
+                              : 'Awaiting External Proof'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedSkillModal(
+                                fused || {
+                                  skill: skill.name,
+                                  category: skill.category,
+                                  status: 'UNVERIFIED',
+                                  confidence: skill.confidence || 'LOW',
+                                  isResumeClaim: true,
+                                  resumeClaimText: skill.evidenceText,
+                                  reason: `CareerLens could not verify this claim from currently connected evidence. This does not mean the candidate does not know ${skill.name}.`,
+                                  repositories: [],
+                                }
+                              )
+                            }
+                            className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-bold rounded-lg flex items-center gap-1 transition-colors"
+                          >
+                            <span>{isVerified ? 'View Evidence' : 'Inspect Proof'}</span>
+                            <ChevronRight className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -672,40 +773,108 @@ export const Resume = () => {
                 <table className="w-full text-left text-xs border border-surface-border rounded-xl overflow-hidden">
                   <thead className="bg-slate-50 text-content-secondary border-b border-surface-border uppercase text-[10px] font-extrabold">
                     <tr>
-                      <th className="p-3">Claim</th>
+                      <th className="p-3">Claim Statement</th>
                       <th className="p-3">Type</th>
-                      <th className="p-3">Source Section</th>
                       <th className="p-3">Source Quote</th>
-                      <th className="p-3">Verification Status</th>
+                      <th className="p-3">External Evidence</th>
+                      <th className="p-3">Verification State</th>
+                      <th className="p-3 text-right">Proof Audit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-border">
-                    {analysis.claims?.map((claim, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="p-3 font-bold text-content-primary">{claim.claim}</td>
-                        <td className="p-3">
-                          <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
-                            {claim.claimType}
-                          </span>
-                        </td>
-                        <td className="p-3 text-content-secondary text-[11px]">{claim.sourceSection}</td>
-                        <td className="p-3 text-content-muted text-[11px] max-w-xs truncate italic">
-                          "{claim.sourceText}"
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-extrabold inline-flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Pending Verification
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {analysis.claims?.map((claim, idx) => {
+                      const matchedFused = fusedSkills.find(
+                        (f) =>
+                          f.skill.toLowerCase() === (claim.claim || '').toLowerCase() ||
+                          (claim.claim || '').toLowerCase().includes(f.skill.toLowerCase())
+                      );
+                      const isVerified = matchedFused?.status === 'VERIFIED' || matchedFused?.status === 'STRONGLY_VERIFIED';
+                      const isPartial = matchedFused?.status === 'PARTIALLY_VERIFIED';
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="p-3">
+                            <span className="font-bold text-content-primary block">{claim.claim}</span>
+                            <span className="text-[10px] text-content-muted">{claim.sourceSection}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                              {claim.claimType}
+                            </span>
+                          </td>
+                          <td className="p-3 text-content-muted text-[11px] max-w-xs truncate italic">
+                            "{claim.sourceText}"
+                          </td>
+                          <td className="p-3">
+                            {isVerified || isPartial ? (
+                              <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                GitHub ({matchedFused?.repositories?.length || 1} repos)
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-medium text-slate-400">
+                                Awaiting external evidence
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {isVerified ? (
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-extrabold inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                VERIFIED
+                              </span>
+                            ) : isPartial ? (
+                              <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-extrabold inline-flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-amber-600" />
+                                PARTIALLY VERIFIED
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-[10px] font-extrabold inline-flex items-center gap-1">
+                                <HelpCircle className="w-3 h-3 text-slate-400" />
+                                UNVERIFIED
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedSkillModal(
+                                  matchedFused || {
+                                    skill: claim.claim,
+                                    category: 'Claim',
+                                    status: 'UNVERIFIED',
+                                    confidence: 'LOW',
+                                    isResumeClaim: true,
+                                    resumeClaimText: claim.sourceText,
+                                    reason: `CareerLens could not verify "${claim.claim}" from currently connected external sources. Verification remains pending.`,
+                                    repositories: [],
+                                  }
+                                )
+                              }
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-primary font-bold text-[11px] rounded-lg inline-flex items-center gap-1 transition-colors"
+                            >
+                              <span>Inspect</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
         </div>
+      )}
+
+      {/* Interactive Skill Proof Modal */}
+      {selectedSkillModal && (
+        <SkillEvidenceModal
+          skill={selectedSkillModal}
+          onClose={() => setSelectedSkillModal(null)}
+        />
       )}
     </div>
   );

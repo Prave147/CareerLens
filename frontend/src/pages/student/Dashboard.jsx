@@ -22,21 +22,17 @@ import {
   Award,
   BookOpen
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  Tooltip
-} from 'recharts';
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts';
+import { useSkillEvidence } from '../../hooks/useSkillEvidence';
+import { SkillEvidenceModal } from '../../components/SkillEvidenceModal';
 
 export const Dashboard = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState(null);
   const [analyzingStage, setAnalyzingStage] = useState(null); // String stage name if scanning
+  const [selectedSkillModal, setSelectedSkillModal] = useState(null);
+  const { skills: fusedSkills, summary: fusedSummary, loading: evidenceLoading, refreshEvidence } = useSkillEvidence();
 
   const analysisStages = [
     'Reading resume & claims...',
@@ -93,7 +89,12 @@ export const Dashboard = () => {
   const projectedScore = analysis?.projectedReadiness || 91.3;
   const statusBadge = analysis?.statusBadge || 'Strong candidate';
   const statusSubtitle = analysis?.statusSubtitle || 'Strong foundation with a few targeted proof gaps.';
-  const kpi = analysis?.kpi || { verifiedSkills: 18, evidenceSources: 5, profileCompleteness: 87, criticalGaps: 3 };
+  const kpi = {
+    verifiedSkills: fusedSummary?.verifiedCount !== undefined ? fusedSummary.verifiedCount : (analysis?.kpi?.verifiedSkills ?? 0),
+    evidenceSources: fusedSummary?.sourcesConnected?.length !== undefined ? fusedSummary.sourcesConnected.length : (analysis?.kpi?.evidenceSources ?? 0),
+    profileCompleteness: analysis?.kpi?.profileCompleteness || 85,
+    criticalGaps: fusedSummary?.unverifiedCount !== undefined ? fusedSummary.unverifiedCount : (analysis?.kpi?.criticalGaps ?? 0)
+  };
 
   const radarData = analysis?.radarScores || [
     { category: 'Frontend', studentScore: 92, industryBenchmark: 80 },
@@ -490,6 +491,111 @@ export const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Skills Overview & Verification (Fused from Real Sources) */}
+      <div className="bg-white p-6 rounded-2xl border border-surface-border shadow-card space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-surface-border">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-primary/10 text-primary uppercase tracking-wider">
+                Multi-Source Verification
+              </span>
+              <span className="text-xs text-content-secondary font-medium">
+                Canonical Employability Evidence Matrix
+              </span>
+            </div>
+            <h3 className="text-base font-extrabold text-content-primary">
+              Skills Overview & Verification Status
+            </h3>
+            <p className="text-xs text-content-secondary mt-0.5">
+              Every tracked skill is cross-referenced between resume claims, GitHub repositories, and coding proofs. Click any skill to inspect the verification chain.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              to="/skills"
+              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-surface-border text-content-primary text-xs font-bold rounded-xl flex items-center gap-1 transition-all"
+            >
+              <span>Full Skills Matrix</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Fused Summary Banner */}
+        {fusedSummary && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 bg-emerald-50/40 border border-emerald-200 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-700 block">Verified Skills</span>
+              <span className="text-xl font-black text-emerald-800">{fusedSummary.verifiedCount}</span>
+              <span className="text-[10px] text-emerald-600 block">Confirmed in code</span>
+            </div>
+            <div className="p-3 bg-amber-50/40 border border-amber-200 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-700 block">Partially Verified</span>
+              <span className="text-xl font-black text-amber-800">{fusedSummary.partiallyVerifiedCount}</span>
+              <span className="text-[10px] text-amber-600 block">Forks / README only</span>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-600 block">Unverified Claims</span>
+              <span className="text-xl font-black text-slate-800">{fusedSummary.unverifiedCount}</span>
+              <span className="text-[10px] text-slate-500 block">Resume claims pending proof</span>
+            </div>
+            <div className="p-3 bg-blue-50/40 border border-blue-200 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-blue-700 block">Evidence Coverage</span>
+              <span className="text-xl font-black text-primary">{fusedSummary.evidenceCoveragePercentage}%</span>
+              <span className="text-[10px] text-blue-600 block">Claims verified by code</span>
+            </div>
+          </div>
+        )}
+
+        {/* Clickable Skill Chips */}
+        <div className="pt-2">
+          <div className="flex flex-wrap gap-2.5">
+            {(fusedSkills && fusedSkills.length > 0 ? fusedSkills : []).map((s, idx) => {
+              const isVer = s.status === 'VERIFIED' || s.status === 'STRONGLY_VERIFIED';
+              const isPart = s.status === 'PARTIALLY_VERIFIED';
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedSkillModal(s)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 hover:shadow-subtle ${
+                    isVer
+                      ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900 hover:border-emerald-400'
+                      : isPart
+                      ? 'bg-amber-50/60 border-amber-200 text-amber-900 hover:border-amber-400'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-400'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {isVer ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : isPart ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    )}
+                    <span>{s.skill}</span>
+                  </span>
+                  <span className={`px-1.5 py-0.2 rounded text-[9px] uppercase font-mono font-bold ${
+                    isVer ? 'bg-emerald-100 text-emerald-800' : isPart ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {isVer ? 'VERIFIED' : isPart ? 'PARTIAL' : 'PENDING'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive Skill Detail Modal */}
+      {selectedSkillModal && (
+        <SkillEvidenceModal
+          skill={selectedSkillModal}
+          onClose={() => setSelectedSkillModal(null)}
+        />
+      )}
     </div>
   );
 };

@@ -5,6 +5,8 @@ const Analysis = require('../models/Analysis');
 const Roadmap = require('../models/Roadmap');
 const Project = require('../models/Project');
 const CodingActivity = require('../models/CodingActivity');
+const LeetCodeProfile = require('../models/LeetCodeProfile');
+const GitHubProfile = require('../models/GitHubProfile');
 
 const githubConnector = require('../services/connectors/githubConnector');
 const leetcodeConnector = require('../services/connectors/leetcodeConnector');
@@ -17,6 +19,7 @@ const evidenceEngine = require('../services/evidence/evidenceEngine');
 const scoringEngine = require('../services/scoring/scoringEngine');
 const aiService = require('../services/ai/aiService');
 const resumeService = require('../services/resume/resumeService');
+const evidenceFusionService = require('../services/evidence/evidenceFusionService');
 
 // Get current student profile
 const getProfile = async (req, res, next) => {
@@ -414,40 +417,50 @@ const getAnalysis = async (req, res, next) => {
 const getEvidence = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?._id;
-    let userSubmissions = [];
-    try {
-      const savedEv = await Evidence.find({ studentId: userId });
-      userSubmissions = savedEv.flatMap(e => (e.userSubmittedEvidence || []).map(s => ({ ...s.toObject(), skill: e.skill })));
-    } catch (e) {}
+    const fusion = await evidenceFusionService.getFusedSkillEvidence(userId);
 
-    const githubData = await githubConnector.fetchUserData('alexkumar-dev');
-    const leetcodeData = await leetcodeConnector.fetchUserData('alex_code');
-    const gfgData = await gfgConnector.fetchUserData('alex_k');
-    const codechefData = await codechefConnector.fetchUserData('alex_chef');
-    const linkedinData = await linkedinConnector.fetchUserData('alex-kumar-engineer');
-    const portfolioData = await portfolioConnector.fetchUserData('https://alexkumar.dev');
-
-    const matrix = evidenceEngine.processEvidence({
-      resumeSkills: ['React', 'Node.js', 'MongoDB', 'JavaScript', 'Docker', 'AWS', 'Testing', 'Socket.IO', 'Git', 'Express.js'],
-      githubData,
-      leetcodeData,
-      gfgData,
-      codechefData,
-      linkedinData,
-      portfolioData,
-      userSubmissions,
-    });
+    // Map fused skills to matrix items expected by legacy consumers if any
+    const matrix = fusion.skills.map((s) => ({
+      skill: s.skill,
+      category: s.category,
+      claims: {
+        resume: s.sources.includes('RESUME'),
+        github: s.sources.includes('GITHUB'),
+        portfolio: s.sources.includes('PORTFOLIO'),
+        selfReported: s.sources.includes('PROFILE'),
+      },
+      evidenceSources: {
+        resume: {
+          found: s.sources.includes('RESUME'),
+          level: s.sources.includes('RESUME') ? 'Claimed' : 'Not Found',
+          detail: s.reason,
+        },
+        github: {
+          found: s.isGithubVerified || (s.repositories && s.repositories.length > 0),
+          level: s.status === 'VERIFIED' ? 'Strong' : s.status === 'PARTIALLY_VERIFIED' ? 'Moderate' : 'Not Found',
+          repoName: s.repositories[0]?.name || null,
+          detail: s.repositories.length > 0 ? `${s.repositories.length} public repos (${s.repositories.map(r => r.name).join(', ')})` : 'No matching repository proof found.',
+        },
+      },
+      finalStatus: s.status,
+      confidence: s.confidence,
+      confidencePercentage: s.confidenceScore,
+      evidenceChain: s.evidenceChain,
+      whyVerifiedExplanation: s.reason,
+      repositories: s.repositories,
+    }));
 
     res.json({
       success: true,
       evidenceMatrix: matrix,
       summary: {
-        totalSkillsEvaluated: matrix.length,
-        verifiedCount: matrix.filter(m => m.finalStatus === 'VERIFIED' || m.finalStatus === 'STRONGLY_VERIFIED').length,
-        partiallyVerifiedCount: matrix.filter(m => m.finalStatus === 'PARTIALLY_VERIFIED').length,
-        weakCount: matrix.filter(m => m.finalStatus === 'WEAK').length,
-        unverifiedCount: matrix.filter(m => m.finalStatus === 'UNVERIFIED').length,
-      }
+        totalSkillsEvaluated: fusion.summary.totalSkills,
+        verifiedCount: fusion.summary.verifiedCount,
+        partiallyVerifiedCount: fusion.summary.partiallyVerifiedCount,
+        unverifiedCount: fusion.summary.unverifiedCount,
+        evidenceCoveragePercentage: fusion.summary.evidenceCoveragePercentage,
+        sourcesConnected: fusion.summary.sourcesConnected,
+      },
     });
   } catch (error) {
     next(error);
@@ -470,9 +483,31 @@ const getSkills = async (req, res, next) => {
 // Get Projects with ownership & fork analysis
 const getProjects = async (req, res, next) => {
   try {
+    const userId = req.user?.id || req.user?._id;
+    let githubDoc = null;
+    if (userId) {
+      githubDoc = await GithubProfile.findOne({ candidateId: userId });
+    }
+
+    if (githubDoc && githubDoc.repositories && githubDoc.repositories.length > 0) {
+      const originalCount = githubDoc.repositories.filter(r => !r.isFork).length;
+      return res.json({
+        success: true,
+        username: githubDoc.username,
+        connected: true,
+        projects: githubDoc.repositories,
+        antiGamingSummary: {
+          status: originalCount > 0 ? 'High Confidence' : 'Verification Required',
+          explanation: `${originalCount} original repository codebases detected for @${githubDoc.username}. Detected technologies: ${githubDoc.detectedTechnologies?.map(t => t.name).join(', ') || 'N/A'}.`,
+        }
+      });
+    }
+
     const githubData = await githubConnector.fetchUserData('alexkumar-dev');
     res.json({
       success: true,
+      username: 'alexkumar-dev',
+      connected: false,
       projects: githubData.repositories || [],
       antiGamingSummary: {
         status: githubData.antiGamingStatus || 'High Confidence',
@@ -487,21 +522,71 @@ const getProjects = async (req, res, next) => {
 // Get Coding Activity & Consistency
 const getCodingActivity = async (req, res, next) => {
   try {
-    const leetcode = await leetcodeConnector.fetchUserData('alex_code');
+    const userId = req.user?.id || req.user?._id;
+    let leetcodeDoc = null;
+    let githubDoc = null;
+
+    if (userId) {
+      leetcodeDoc = await LeetCodeProfile.findOne({ candidateId: userId });
+      githubDoc = await GitHubProfile.findOne({ candidateId: userId });
+    }
+
+    let leetcodeData = null;
+    if (leetcodeDoc) {
+      leetcodeData = {
+        connected: true,
+        username: leetcodeDoc.username,
+        problemsSolved: leetcodeDoc.totalSolved,
+        contestRating: leetcodeDoc.contestRating ? Math.round(leetcodeDoc.contestRating) : 'Unrated',
+        globalRank: leetcodeDoc.contestGlobalRanking || (leetcodeDoc.ranking ? `#${leetcodeDoc.ranking.toLocaleString()}` : 'N/A'),
+        streakDays: leetcodeDoc.recentSubmissions?.length > 0 ? 7 : 0,
+        acceptanceRate: leetcodeDoc.acceptanceRate ? `${leetcodeDoc.acceptanceRate.toFixed(1)}%` : 'N/A',
+        breakdown: {
+          easy: { solved: leetcodeDoc.easySolved || 0 },
+          medium: { solved: leetcodeDoc.mediumSolved || 0 },
+          hard: { solved: leetcodeDoc.hardSolved || 0 },
+        },
+        languageStats: leetcodeDoc.languageStats || [],
+        badges: leetcodeDoc.badges || [],
+        dsaEvidenceStrength: leetcodeDoc.dsaEvidenceStrength,
+        verifiedClaims: leetcodeDoc.verifiedClaims || [],
+      };
+    } else {
+      leetcodeData = {
+        connected: false,
+        username: null,
+        problemsSolved: 0,
+        contestRating: 'Not Connected',
+        globalRank: 'N/A',
+        streakDays: 0,
+        breakdown: {
+          easy: { solved: 0 },
+          medium: { solved: 0 },
+          hard: { solved: 0 },
+        },
+      };
+    }
+
     const gfg = await gfgConnector.fetchUserData('alex_k');
     const codechef = await codechefConnector.fetchUserData('alex_chef');
 
     res.json({
       success: true,
       platforms: {
-        leetcode,
+        leetcode: leetcodeData,
         gfg,
         codechef,
       },
+      github: githubDoc ? {
+        connected: true,
+        username: githubDoc.username,
+        publicRepos: githubDoc.publicRepos,
+        followers: githubDoc.followers,
+      } : { connected: false },
       overallConsistency: {
-        historical: 'Strong (400+ problems solved across DP, Trees, Graphs)',
-        recent: 'Needs Improvement (-40% 30-day activity)',
-        recommendation: 'Complete daily POTD LeetCode challenge for 14 days to recover consistency multiplier.',
+        historical: leetcodeDoc ? `${leetcodeDoc.totalSolved} problems solved on LeetCode (${leetcodeDoc.dsaEvidenceStrength} DSA Strength)` : 'No algorithmic platform connected yet',
+        recent: leetcodeDoc && leetcodeDoc.totalSolved >= 100 ? 'Active & Consistent' : 'Connect LeetCode to establish verified consistency',
+        recommendation: leetcodeDoc ? 'Maintain daily problem solving consistency to boost career readiness.' : 'Connect your LeetCode handle to automatically verify DSA & problem solving skills.',
       }
     });
   } catch (error) {

@@ -3,10 +3,12 @@ const githubTechDetector = require('./githubTechDetector');
 const githubOwnershipEvaluator = require('./githubOwnershipEvaluator');
 const githubResumeMatcher = require('./githubResumeMatcher');
 const githubEvidenceService = require('./githubEvidenceService');
+const evidenceFusionService = require('../evidence/evidenceFusionService');
 
 const GitHubProfile = require('../../models/GitHubProfile');
 const StudentProfile = require('../../models/StudentProfile');
 const ResumeAnalysis = require('../../models/ResumeAnalysis');
+const Evidence = require('../../models/Evidence');
 const { getIsConnected } = require('../../config/database');
 
 class GithubService {
@@ -420,6 +422,13 @@ class GithubService {
 
     console.log(`[GithubService] Successfully analyzed @${cleanUsername}. Verified skills: ${verifiedSkillMatches.length}`);
 
+    // 11. Sync global evidence fusion SkillClaims for candidate
+    try {
+      await evidenceFusionService.syncCandidateSkillClaims(candidateId);
+    } catch (syncErr) {
+      console.warn('[GithubService] Evidence fusion sync warning:', syncErr.message);
+    }
+
     return {
       success: true,
       message: 'GitHub intelligence analysis completed successfully.',
@@ -427,6 +436,60 @@ class GithubService {
       projectMatches,
       verifiedSkills: verifiedSkillMatches,
       pendingClaims: pendingSkillClaims,
+    };
+  }
+
+  /**
+   * Disconnects GitHub account and clears attached repository evidence
+   */
+  async disconnectGithub(candidateId) {
+    if (!candidateId) return null;
+
+    // 1. Delete GitHubProfile document
+    await GitHubProfile.deleteMany({ candidateId });
+
+    // 2. Clear GitHub handle on StudentProfile
+    const profile = await StudentProfile.findOne({ $or: [{ user: candidateId }, { studentId: candidateId }] });
+    if (profile) {
+      if (profile.platformHandles) {
+        profile.platformHandles.github = '';
+      }
+      // Reset verified status on profile skills
+      if (profile.skills) {
+        profile.skills = profile.skills.map((s) => ({
+          ...s.toObject(),
+          verified: false,
+          verificationStatus: 'UNVERIFIED',
+        }));
+      }
+      await profile.save();
+    }
+
+    // 3. Reset GitHub evidence on Evidence documents
+    const evidenceList = await Evidence.find({
+      $or: [{ studentId: candidateId }, ...(profile?._id ? [{ studentProfile: profile._id }] : [])],
+    });
+
+    for (const ev of evidenceList) {
+      ev.evidenceSources.github = {
+        found: false,
+        level: 'Not Found',
+        detail: 'GitHub account disconnected.',
+      };
+      ev.evidenceChain = (ev.evidenceChain || []).filter((c) => c.source !== 'GITHUB');
+      ev.finalStatus = 'UNVERIFIED';
+      ev.confidence = 'LOW';
+      ev.confidencePercentage = 25;
+      ev.whyVerifiedExplanation = 'No active GitHub profile connected. Verification requires reconnecting a valid repository source.';
+      await ev.save();
+    }
+
+    // 4. Re-sync candidate SkillClaims so all claims reflect disconnected state
+    await evidenceFusionService.syncCandidateSkillClaims(candidateId);
+
+    return {
+      success: true,
+      message: 'GitHub account disconnected and claim evidence synchronized.',
     };
   }
 

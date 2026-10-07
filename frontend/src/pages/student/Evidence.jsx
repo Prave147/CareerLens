@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { studentService } from '../../services/studentService';
+import { SkillEvidenceModal } from '../../components/SkillEvidenceModal';
 import {
   Layers,
   ShieldCheck,
@@ -363,93 +364,22 @@ export const Evidence = () => {
         </div>
       )}
 
-      {/* DETAIL MODAL / PANEL */}
+      {/* DETAIL MODAL */}
       {selectedSkill && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-surface-border shadow-elevated max-w-xl w-full p-6 space-y-5 animate-fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-surface-border">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-extrabold text-content-primary">{selectedSkill.skill}</h3>
-                {renderBadge(selectedSkill.finalStatus)}
-              </div>
-              <button
-                onClick={() => setSelectedSkill(null)}
-                className="p-1 rounded-lg text-content-secondary hover:text-content-primary hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div>
-                <span className="font-bold uppercase tracking-wider text-content-muted text-[10px]">Verification Confidence</span>
-                <p className="text-sm font-extrabold text-content-primary mt-0.5">
-                  {selectedSkill.confidence} — {selectedSkill.confidencePercentage}%
-                </p>
-              </div>
-
-              {/* Why is this verified? */}
-              <div className="p-3.5 bg-brand-50 border border-brand-200 rounded-xl space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-primary">
-                  <Sparkles className="w-4 h-4" /> Why is this {selectedSkill.finalStatus.toLowerCase().replace('_', ' ')}?
-                </div>
-                <p className="text-content-secondary leading-relaxed text-xs">
-                  {selectedSkill.whyVerifiedExplanation}
-                </p>
-              </div>
-
-              {/* Evidence Chain */}
-              <div>
-                <span className="font-bold uppercase tracking-wider text-content-muted text-[10px] block mb-2">
-                  Observable Evidence Chain
-                </span>
-                <div className="space-y-2">
-                  {selectedSkill.evidenceChain && selectedSkill.evidenceChain.length > 0 ? (
-                    selectedSkill.evidenceChain.map((ev, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 border border-surface-border rounded-lg flex items-start gap-2.5">
-                        <div className="w-5 h-5 rounded-full bg-brand-100 text-primary flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <strong className="text-content-primary">{ev.source}:</strong>{' '}
-                          <span className="text-content-secondary">{ev.detail}</span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-status-danger">
-                      No code, commit history, or live test runs detected across connected repositories.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-surface-border flex items-center justify-between">
-              {(selectedSkill.finalStatus === 'UNVERIFIED' || selectedSkill.finalStatus === 'WEAK') ? (
-                <button
-                  onClick={() => {
-                    const skillName = selectedSkill.skill;
-                    setSelectedSkill(null);
-                    handleOpenSubmit(skillName);
-                  }}
-                  className="px-3.5 py-2 bg-primary hover:bg-primary-hover text-white font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  Submit Proof for {selectedSkill.skill}
-                </button>
-              ) : (
-                <div />
-              )}
-              <button
-                onClick={() => setSelectedSkill(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-content-primary font-bold text-xs rounded-lg transition-colors"
-              >
-                Close Trace Panel
-              </button>
-            </div>
-          </div>
-        </div>
+        <SkillEvidenceModal
+          skill={{
+            skill: selectedSkill.skill,
+            category: selectedSkill.category,
+            status: selectedSkill.finalStatus,
+            confidence: selectedSkill.confidence,
+            confidenceScore: selectedSkill.confidencePercentage,
+            reason: selectedSkill.whyVerifiedExplanation,
+            repositories: selectedSkill.repositories || [],
+            isResumeClaim: selectedSkill.claims?.resume,
+            evidenceChain: selectedSkill.evidenceChain,
+          }}
+          onClose={() => setSelectedSkill(null)}
+        />
       )}
     </div>
   );

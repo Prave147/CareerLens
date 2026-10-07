@@ -8,6 +8,7 @@ const { requireStudent } = require('../middleware/roleMiddleware');
 router.use(authenticateUser, requireStudent);
 
 router.post('/connect', githubController.connectGithub);
+router.post('/disconnect', githubController.disconnectGithub);
 router.get('/profile', githubController.getProfile);
 router.post('/analyze', githubController.analyzeGithub);
 router.get('/analysis', githubController.getAnalysis);

@@ -1,69 +1,55 @@
-const githubConnector = require('../services/connectors/githubConnector');
-const leetcodeConnector = require('../services/connectors/leetcodeConnector');
-const gfgConnector = require('../services/connectors/gfgConnector');
-const linkedinConnector = require('../services/connectors/linkedinConnector');
-const portfolioConnector = require('../services/connectors/portfolioConnector');
-const evidenceEngine = require('../services/evidence/evidenceEngine');
+const evidenceFusionService = require('../services/evidence/evidenceFusionService');
 
-const getEvidenceMatrix = async (req, res, next) => {
+const getSkillsEvidence = async (req, res, next) => {
   try {
-    const githubData = await githubConnector.fetchUserData('alexkumar-dev');
-    const leetcodeData = await leetcodeConnector.fetchUserData('alex_code');
-    const gfgData = await gfgConnector.fetchUserData('alex_k');
-    const linkedinData = await linkedinConnector.fetchUserData('alex-kumar-engineer');
-    const portfolioData = await portfolioConnector.fetchUserData('https://alexkumar.dev');
+    const candidateId = req.user?.id || req.user?._id;
+    if (!candidateId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
 
-    const resumeSkills = [
-      'React', 'Node.js', 'MongoDB', 'JavaScript', 'Docker', 'AWS', 'Testing (Jest/Mocha)', 'Socket.IO', 'Git', 'Express.js'
-    ];
-
-    const matrix = evidenceEngine.processEvidence({
-      resumeSkills,
-      githubData,
-      leetcodeData,
-      gfgData,
-      linkedinData,
-      portfolioData,
-    });
-
-    res.json({
-      success: true,
-      evidenceMatrix: matrix,
-      summary: {
-        totalSkillsEvaluated: matrix.length,
-        verifiedCount: matrix.filter(m => m.finalStatus === 'VERIFIED').length,
-        partiallyVerifiedCount: matrix.filter(m => m.finalStatus === 'PARTIALLY_VERIFIED').length,
-        unverifiedCount: matrix.filter(m => m.finalStatus === 'UNVERIFIED').length,
-      }
-    });
+    const result = await evidenceFusionService.getFusedSkillEvidence(candidateId);
+    res.json(result);
   } catch (error) {
     next(error);
   }
 };
 
-const getEvidenceDetail = async (req, res, next) => {
+const getSingleSkillDetail = async (req, res, next) => {
   try {
-    const { skill } = req.params;
-    const githubData = await githubConnector.fetchUserData('alexkumar-dev');
-    const leetcodeData = await leetcodeConnector.fetchUserData('alex_code');
-    const gfgData = await gfgConnector.fetchUserData('alex_k');
-    const linkedinData = await linkedinConnector.fetchUserData('alex-kumar-engineer');
-    const portfolioData = await portfolioConnector.fetchUserData('https://alexkumar.dev');
+    const candidateId = req.user?.id || req.user?._id;
+    if (!candidateId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
 
-    const resumeSkills = ['React', 'Node.js', 'MongoDB', 'Docker', 'AWS', 'Testing', 'Socket.IO', 'Git'];
+    const { skillName } = req.params;
+    if (!skillName) {
+      return res.status(400).json({ success: false, message: 'skillName parameter is required.' });
+    }
 
-    const evaluation = evidenceEngine.evaluateSingleSkill(skill, {
-      resumeSkills,
-      githubData,
-      leetcodeData,
-      gfgData,
-      linkedinData,
-      portfolioData,
-    });
+    const result = await evidenceFusionService.getSingleSkillEvidence(candidateId, decodeURIComponent(skillName));
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
 
+const getEvidenceSummary = async (req, res, next) => {
+  try {
+    const candidateId = req.user?.id || req.user?._id;
+    if (!candidateId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const result = await evidenceFusionService.getFusedSkillEvidence(candidateId);
     res.json({
       success: true,
-      skillDetail: evaluation,
+      summary: result.summary,
+      insights: result.insights,
+      verifiedSkills: result.skills.filter((s) => s.status === 'VERIFIED'),
+      unverifiedSkills: result.skills.filter((s) => s.status === 'UNVERIFIED'),
     });
   } catch (error) {
     next(error);
@@ -71,6 +57,7 @@ const getEvidenceDetail = async (req, res, next) => {
 };
 
 module.exports = {
-  getEvidenceMatrix,
-  getEvidenceDetail,
+  getSkillsEvidence,
+  getSingleSkillDetail,
+  getEvidenceSummary,
 };

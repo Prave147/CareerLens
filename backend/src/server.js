@@ -12,6 +12,8 @@ const placementRoutes = require('./routes/placementRoutes');
 const jobRoutes = require('./routes/jobRoutes');
 const resumeRoutes = require('./routes/resumeRoutes');
 const githubRoutes = require('./routes/githubRoutes');
+const leetcodeRoutes = require('./routes/leetcodeRoutes');
+const evidenceRoutes = require('./routes/evidenceRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -68,6 +70,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/github', githubRoutes);
+app.use('/api/leetcode', leetcodeRoutes);
+app.use('/api/evidence', evidenceRoutes);
 app.use('/api/placement', placementRoutes);
 app.use('/api/jobs', jobRoutes);
 

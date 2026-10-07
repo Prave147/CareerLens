@@ -58,17 +58,17 @@ function isSkillMatch(skillA, skillB) {
   const b = String(skillB).trim().toLowerCase();
   if (a === b) return true;
 
+  // Explicit false positive guards
+  if ((a === 'java' && b.includes('script')) || (b === 'java' && a.includes('script'))) return false;
+  if ((a === 'c' && (b === 'c++' || b === 'c#' || b === 'css')) || (b === 'c' && (a === 'c++' || a === 'c#' || a === 'css'))) return false;
+  if ((a === 'r' && (b === 'react' || b === 'rust')) || (b === 'r' && (a === 'react' || a === 'rust'))) return false;
+
   const cleanA = a.replace(/[\s\-_.]+/g, '');
   const cleanB = b.replace(/[\s\-_.]+/g, '');
   if (cleanA && cleanB && cleanA === cleanB) return true;
 
   if (CANONICAL_ALIASES[a]?.includes(b) || CANONICAL_ALIASES[b]?.includes(a)) return true;
   if (CANONICAL_ALIASES[cleanA]?.includes(cleanB) || CANONICAL_ALIASES[cleanB]?.includes(cleanA)) return true;
-
-  // Only allow substring matching if both strings are long enough (>= 4 chars) to prevent false positives like 'c' in 'javascript'
-  if (a.length >= 4 && b.length >= 4) {
-    if (a.includes(b) || b.includes(a)) return true;
-  }
 
   return false;
 }

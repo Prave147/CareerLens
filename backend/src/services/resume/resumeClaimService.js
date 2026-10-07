@@ -2,6 +2,8 @@ const ResumeAnalysis = require('../../models/ResumeAnalysis');
 const SkillClaim = require('../../models/SkillClaim');
 const Evidence = require('../../models/Evidence');
 const StudentProfile = require('../../models/StudentProfile');
+const evidenceFusionService = require('../evidence/evidenceFusionService');
+const { normalizeSkill, isSkillMatch, getCanonicalDisplayName } = require('../../utils/skillUtils');
 
 function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -42,32 +44,40 @@ class ResumeClaimService {
       extractionMetadata: metadata,
     });
 
-    // 3. Persist SkillClaims (Resume is a claim source: status = PENDING, unverified)
+    // 3. Persist SkillClaims (Resume is a claim source: status = UNVERIFIED initially)
     let claimsCreated = 0;
     if (profile) {
       for (const skill of normalizedData.skills) {
-        const safeSkillPattern = new RegExp(`^${escapeRegex(skill.name.trim())}$`, 'i');
+        const norm = normalizeSkill(skill.name);
         try {
-          const existingClaim = await SkillClaim.findOne({
-            studentId: candidateId,
-            skill: { $regex: safeSkillPattern },
-          });
-
-          if (!existingClaim) {
-            await SkillClaim.create({
-              studentProfile: profile._id,
-              studentId: candidateId,
-              collegeId: profile.collegeId,
-              skill: skill.name.trim(),
-              category: skill.category,
-              source: 'RESUME',
-              claimStrength: 'SELF_DECLARED',
-              verificationStatus: 'PENDING',
-              evidenceFound: true,
-              evidenceNote: skill.evidenceText,
-            });
-            claimsCreated++;
-          }
+          await SkillClaim.findOneAndUpdate(
+            { candidateId, normalizedSkill: norm },
+            {
+              $set: {
+                candidateId,
+                studentId: candidateId,
+                studentProfile: profile._id,
+                collegeId: profile.collegeId,
+                skill: skill.name.trim(),
+                normalizedSkill: norm,
+                category: skill.category || 'OTHER',
+                claimText: skill.evidenceText || `Claimed in resume under ${skill.category || 'skills'}`,
+                source: 'RESUME',
+                claimStrength: 'SELF_DECLARED',
+                status: 'UNVERIFIED',
+                verificationStatus: 'PENDING',
+                confidence: skill.confidence || 'LOW',
+                confidenceScore: 25,
+                supportingSources: ['RESUME'],
+                evidenceCount: 0,
+                evidenceFound: false,
+                evidenceNote: skill.evidenceText || '',
+                reason: 'Claimed on technical resume. Awaiting connected external proof.',
+              },
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+          claimsCreated++;
         } catch (err) {
           console.warn(`[ResumeClaimService] SkillClaim save error for ${skill.name}:`, err.message);
         }
@@ -226,6 +236,13 @@ class ResumeClaimService {
       } catch (err) {
         console.warn('[ResumeClaimService] StudentProfile update warning:', err.message);
       }
+    }
+
+    // 6. Automatically sync resume claims with global evidence fusion (fuses any connected GitHub evidence)
+    try {
+      await evidenceFusionService.syncCandidateSkillClaims(candidateId);
+    } catch (syncErr) {
+      console.warn('[ResumeClaimService] Evidence fusion sync warning:', syncErr.message);
     }
 
     return {

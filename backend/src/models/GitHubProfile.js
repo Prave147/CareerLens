@@ -128,4 +128,4 @@ const gitHubProfileSchema = new mongoose.Schema({
 gitHubProfileSchema.index({ candidateId: 1, lastAnalyzedAt: -1 });
 gitHubProfileSchema.index({ username: 1 });
 
-module.exports = mongoose.model('GitHubProfile', gitHubProfileSchema);
+module.exports = mongoose.models.GitHubProfile || mongoose.model('GitHubProfile', gitHubProfileSchema);

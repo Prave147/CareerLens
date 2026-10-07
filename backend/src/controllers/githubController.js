@@ -27,6 +27,20 @@ const connectGithub = async (req, res, next) => {
   }
 };
 
+const disconnectGithub = async (req, res, next) => {
+  try {
+    const candidateId = req.user?.id || req.user?._id;
+    if (!candidateId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const result = await githubService.disconnectGithub(candidateId);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getProfile = async (req, res, next) => {
   try {
     const candidateId = req.user?.id || req.user?._id;
@@ -93,6 +107,7 @@ const getAnalysis = async (req, res, next) => {
 
 module.exports = {
   connectGithub,
+  disconnectGithub,
   getProfile,
   analyzeGithub,
   getAnalysis,

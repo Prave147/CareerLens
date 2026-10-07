@@ -51,6 +51,7 @@ export const StudentLayout = () => {
       label: 'EVIDENCE & INTELLIGENCE',
       items: [
         { name: 'GitHub Intelligence', path: '/github', icon: FolderGit2 },
+        { name: 'LeetCode Intelligence', path: '/leetcode', icon: Code2 },
         { name: 'Evidence Matrix', path: '/evidence', icon: Layers },
         { name: 'Skill Gaps', path: '/skills', icon: Sparkles },
         { name: 'Projects & Ownership', path: '/projects', icon: GitFork },
